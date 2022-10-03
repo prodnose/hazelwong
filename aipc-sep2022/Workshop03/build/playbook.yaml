@@ -1,0 +1,75 @@
+- name: Install code-server
+  hosts: all
+  vars:
+    codeserver_archive: https://github.com/coder/code-server/releases/download/v{{ cs_version }}
+    codeserver_dir: code-server-{{ cs_version }}-linux-amd64
+    download_dir: /usr/local/opt
+    new_dir:
+    - "{{ download_dir }}"
+    - /var/lib/code-server
+    symlink_codeserver:
+    - src: "{{ download_dir }}/{{ codeserver_dir }}"
+      dest: /usr/lib/code-server
+    - src: "{{ download_dir }}/{{ codeserver_dir }}/bin/code-server"
+      dest: /usr/bin/code-server
+  tasks:
+  - name: Create directory
+    file:
+      path: "{{ item }}"
+      state: directory
+    loop: "{{ new_dir }}"
+  - name: Check if archive exists
+    stat:
+      path: "{{ download_dir }}/{{ codeserver_dir }}"
+    register: cs_archive
+  - name: Download and untar archive
+    unarchive:
+      src: "{{ codeserver_archive }}"
+      dest: "{{ download_dir }}"
+      remote_src: true
+    when: not cs_archive.stat.exists
+  - name: Link code server directories and files to /usr/lib and /usr/bin
+    file:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      state: link
+    loop: "{{ symlink_codeserver }}"
+  - name: Generate code-server.service
+    template:
+      src: sample.code-server.service.j2
+      dest: /lib/systemd/system/code-server.service
+      mode: '0400'
+  - name: Start code-server service
+    systemd:
+      daemon_reload: true
+      enabled: true
+      name: code-server
+      state: restarted
+
+- name: Install Nginx
+  hosts: all
+  tasks:
+  - name: Install Nginx
+    apt: 
+      update_cache: true
+      name: nginx 
+      state: latest
+    register: output
+    until: output.stderr == ""
+    retries: 5
+    delay: 10
+  - name: generate nginx configuration for domain
+    template:
+      src: sample.code-server.conf.j2
+      dest: /etc/nginx/sites-available/code-server.conf
+  - name: Enable code-server.conf
+    file: 
+      src: /etc/nginx/sites-available/code-server.conf
+      dest: /etc/nginx/sites-enabled/code-server.conf
+      state: link
+  - name: Restart nginx
+    systemd:
+      daemon_reload: true
+      enabled: true
+      name: nginx
+      state: restarted

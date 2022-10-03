@@ -1,0 +1,39 @@
+
+
+- name: Check Connectivity
+  hosts: codeserver
+  tasks:
+  - name: Ping the hosts
+    ping:
+- name: Setup Code Server
+  hosts: codeserver
+  tasks:
+  - name: Generate codeserver.service file
+    template:
+      src: code-server.service.j2
+      dest: /lib/systemd/system/code-server.service
+      mode: "0400"
+  - name: Start and enable code server
+    systemd:
+      state: restarted
+      daemon_reload: true
+      enabled: true
+      name: code-server
+- name: Setup Nginx
+  hosts: codeserver
+  tasks:
+  - name: Generate config file for Nginx
+    template:
+      src: code-server.conf.j2
+      dest: /etc/nginx/sites-available/code-server.conf
+  - name: Create symbolic link for nginx conf
+    file:
+      src: "/etc/nginx/sites-available/code-server.conf"
+      dest: "/etc/nginx/sites-enabled/code-server.conf"
+      state: link
+  - name: Start and enable nginx
+    systemd:
+      state: restarted
+      daemon_reload: true
+      enabled: true
+      name: nginx
