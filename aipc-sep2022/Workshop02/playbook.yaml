@@ -1,0 +1,79 @@
+- name: Install code-server
+  hosts: all
+  vars:
+    codeserver_archive: https://github.com/coder/code-server/releases/download/v4.7.0/code-server-4.7.0-linux-amd64.tar.gz
+    codeserver_dir: code-server-4.7.0-linux-amd64
+    download_dir: /usr/local/opt
+    lib_codeserver: /usr/lib/code-server
+    new_dirs:
+      - "{{ download_dir }}"
+      - /var/lib/code-server
+  tasks:
+  - name: Create directory
+    file:
+      path: "{{ download_dir }}"
+      state: directory
+    loop: "{{ new_dirs }}"
+  - name: Check if archive exists
+    stat:
+      path: "{{ download_dir }}/{{ codeserver_dir }}.tar.gz"
+    register: cs_archive
+  - name: Download and untar archive
+    unarchive:
+      src: "{{ codeserver_archive }}"
+      dest: "{{ download_dir }}"
+      remote_src: true
+    when: not cs_archive.stat.exists
+  - name: Create code-server link
+    shell: |
+      ln -s /usr/local/opt/code-server-4.7.0-linux-amd64 /usr/lib/code-server
+      ln -s /usr/lib/code-server/bin/code-server /usr/bin/code-server
+      mkdir /var/lib/code-server
+      touch /lib/systemd/system/code-server.service
+  - name: Create codeserver service file
+    copy:
+      dest: /lib/systemd/system/code-server.service
+      content: |
+        [Unit]
+        Description=code-server
+        After=nginx.service
+
+        [Service]
+        Type=simple
+        Environment=PASSWORD=P@$$w0rd
+        ExecStart=/usr/bin/code-server --bind-addr 127.0.0.1:8080 --user-data-dir /var/lib/code-server --auth password
+        Restart=always
+
+        [Install]
+        WantedBy=multi-user.target
+
+  - name: Start code server service
+    systemd:
+      daemon-reload: true
+      enabled: true
+      name: code-server
+      state: restarted
+
+- name: Install Nginx
+  hosts: all
+  tasks:
+     - name: Install Nginx
+       apt:
+         update_cache: true
+         name: nginx
+         state: latest
+     - name: generate nginx configuration for domain
+       template:
+         src: sample.code-server.conf.j2
+         dest: /etc/nginx/sites-available/code-server.conf
+     - name: Enable code-server.conf
+       file:
+         src: /etc/nginx/sites-available/code-server.conf
+         dest: /etc/nginx/sites-enabled/code-server.conf
+         state: link
+     - name: Restart nginx
+       systemd:
+         daemon_reload: true
+         enabled: true
+         name: nginx
+         state: restarted
